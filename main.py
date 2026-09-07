@@ -1,3 +1,5 @@
+from typing import List
+from pydantic import BaseModel, Field
 import os
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -24,6 +26,17 @@ load_dotenv()
 #     print(f"Searching for {query}")
 #     return tavily.search(query=query)
 
+class Source(BaseModel):
+    """Schema for a source used by the agent
+    """
+    url: str = Field(description="The URL of the source")
+
+
+class AgentResponse(BaseModel):
+    """Schema for the agent response with answer and sources"""
+    answer: str = Field(description="The agent's answer to the query")
+    sources: list[Source] = Field(default_factory=list, description="List of sources used to generate the answer")
+
 
 llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -31,13 +44,31 @@ llm = ChatGoogleGenerativeAI(
     )
 
 tools = [TavilySearch()]
+
+# Instrucción clave para obligar al LLM a investigar primero
+system_prompt = (
+    "You are an expert researcher. You must ALWAYS use TavilySearch to gather external "
+    "information before producing your final answer. If searching for LinkedIn jobs, "
+    "search public job postings via search queries."
+)
+
+
 # tools = [search]
-agent = create_agent(model=llm, tools=tools)
+agent = create_agent(model=llm, tools=tools, system_prompt=system_prompt, response_format=AgentResponse)
 my_query = "search for 3 job posting for an ai engineer using langchain in argentina on linkedin and list their details"
 def main():
     print("Hello from langchain-course!")
     result = agent.invoke({"messages":HumanMessage(content=my_query)})
-    print(result)
+    # Imprimir directamente la salida estructurada limpia
+    if "structured_response" in result:
+        res = result["structured_response"]
+        print("\n--- RESPUESTA ---")
+        print(res.answer)
+        print("\n--- FUENTES ---")
+        for src in res.sources:
+            print(f"- {src.url}")
+    else:
+        print(result)
 
 
 if __name__ == "__main__":
